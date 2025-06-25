@@ -7,9 +7,9 @@ from pyrogram.types import Message
 from pyrogram.errors import FloodWait, ChatAdminRequired, PeerIdInvalid
 
 # User account credentials (get from my.telegram.org)
-API_ID = os.getenv("API_ID")  # Your API ID
-API_HASH = os.getenv("API_HASH")  # Your API Hash
-SESSION_STRING = os.getenv("SESSION_STRING")  # Your session string
+API_ID = 28093492  # Your API ID
+API_HASH = "2d18ff97ebdfc2f1f3a2596c48e3b4e4" # Your API Hash
+SESSION_STRING = "BQGsrDQAU_-Qo51cnaQIYNyYgnuKCmUTcr-TZ_NclAv_7mv85esTZzlziNBqzeSSPBc_5cvTzWEkILE3MsVOJrouxIC5nnexy1MP7adAnmLlN6LHJu_-chDT289Y5xuedc1EG8jAODLKDCkglVIi1tTwBp8-QfgBCFqW-n5JwCt-_YyjXDC8AERccJbl5ZDYyXCyToGLq9Fn0fYd4U2pF1vPrCqZNcYydd3keRjoPmXBiYMuLtsZIWuPUyBn8lqH7oJ89CbOFVtjw97zfxbYkRxkvGQgmdCum-yWOWV1ZPyje_NqiYQlHNjInDSjxwto4q9exdmCB3u6inStGg0-ryyxwDCgQwAAAAHV1YXKAA" # Your session string
 CONFIG_FILE = "config.json"
 
 logging.basicConfig(
