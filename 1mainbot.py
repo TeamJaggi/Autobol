@@ -286,7 +286,10 @@ async def status(client, message: Message):
     await message.reply_text(text)
 
 
-@app.on_message(filters.command("help") & filters.private)
+@app.on_message(filters.command("help"))
+async def help_command(client, message: Message):
+    print("✅ Received /help command from:", message.from_user.id)
+    await message.reply_text("✅ Bot is working! Use /add, /list etc.")
 async def help_command(client, message: Message):
     """Show help"""
     help_text = """
