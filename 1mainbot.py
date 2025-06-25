@@ -441,7 +441,7 @@ async def main():
         print("🔄 Auto-forwarding is now active!")
         
         # Keep the client running
-        await app.idle()
+        await asyncio.Event().wait()
         
     except Exception as e:
         logger.error(f"Failed to start: {e}")
