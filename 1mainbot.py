@@ -1,15 +1,15 @@
 import json
 import logging
 import asyncio
-import os
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from pyrogram.errors import FloodWait, ChatAdminRequired, PeerIdInvalid
+from pyrogram.errors import FloodWait, ChatAdminRequired
 
-# User account credentials (get from my.telegram.org)
-API_ID = 28093492  # Your API ID
-API_HASH = "2d18ff97ebdfc2f1f3a2596c48e3b4e4" # Your API Hash
-SESSION_STRING = "BQGsrDQAU_-Qo51cnaQIYNyYgnuKCmUTcr-TZ_NclAv_7mv85esTZzlziNBqzeSSPBc_5cvTzWEkILE3MsVOJrouxIC5nnexy1MP7adAnmLlN6LHJu_-chDT289Y5xuedc1EG8jAODLKDCkglVIi1tTwBp8-QfgBCFqW-n5JwCt-_YyjXDC8AERccJbl5ZDYyXCyToGLq9Fn0fYd4U2pF1vPrCqZNcYydd3keRjoPmXBiYMuLtsZIWuPUyBn8lqH7oJ89CbOFVtjw97zfxbYkRxkvGQgmdCum-yWOWV1ZPyje_NqiYQlHNjInDSjxwto4q9exdmCB3u6inStGg0-ryyxwDCgQwAAAAHV1YXKAA" # Your session string
+# 🔐 Hardcoded credentials
+API_ID = 28093492
+API_HASH = "2d18ff97ebdfc2f1f3a2596c48e3b4e4"
+SESSION_STRING = "BQGsrDQAU_-Qo51cnaQIYNyY..."
+
 CONFIG_FILE = "config.json"
 
 logging.basicConfig(
@@ -18,14 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Validate credentials
-if not API_ID or not API_HASH:
-    raise ValueError("API_ID and API_HASH environment variables must be set")
-
-if not SESSION_STRING:
-    raise ValueError("SESSION_STRING environment variable must be set")
-
-# Initialize client with session string
+# Start Pyrogram Client
 app = Client(
     name="auto_forwarder",
     api_id=API_ID,
@@ -33,429 +26,181 @@ app = Client(
     session_string=SESSION_STRING
 )
 
-
+# Load/save config helpers
 def load_config():
     try:
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
-    except FileNotFoundError:
-        logger.info("Config file not found, creating new one")
-        default_config = {
-            "source_channels": [],  # Channels to monitor
-            "target_channels": [],  # Channels to forward to
-            "replacements": {},     # Text replacements
-            "forwarded_messages": set(),  # Track forwarded messages (prevent duplicates)
-            "admin_chat": None      # Your personal chat for bot commands
-        }
-        save_config(default_config)
-        return default_config
-    except json.JSONDecodeError:
-        logger.error("Invalid JSON in config file")
-        return {
+    except:
+        default = {
             "source_channels": [],
             "target_channels": [],
             "replacements": {},
-            "forwarded_messages": set(),
-            "admin_chat": None
+            "forwarded_messages": [],
         }
-
+        save_config(default)
+        return default
 
 def save_config(data):
     try:
-        # Convert set to list for JSON serialization
-        if "forwarded_messages" in data and isinstance(data["forwarded_messages"], set):
-            data["forwarded_messages"] = list(data["forwarded_messages"])
-        
         with open(CONFIG_FILE, "w") as f:
             json.dump(data, f, indent=2)
-        logger.info("Config saved successfully")
     except Exception as e:
         logger.error(f"Failed to save config: {e}")
 
-
+# Get channel or chat entity
 async def get_entity_info(client, identifier):
-    """Get chat information from username or ID"""
     try:
-        if isinstance(identifier, str) and identifier.startswith('-100'):
-            # Channel ID format
-            chat_id = int(identifier)
-        elif isinstance(identifier, str) and identifier.startswith('@'):
-            # Username format
-            chat_id = identifier
-        else:
-            # Try as integer
-            chat_id = int(identifier) if str(identifier).lstrip('-').isdigit() else identifier
-        
-        chat = await client.get_chat(chat_id)
-        return chat
+        return await client.get_chat(identifier)
     except Exception as e:
-        logger.error(f"Failed to get entity info for {identifier}: {e}")
+        logger.error(f"Error getting chat {identifier}: {e}")
         return None
 
-
-@app.on_message(filters.command("add") & filters.private)
-async def add_channel(client, message: Message):
-    """Add source or target channel"""
-    parts = message.text.split()
-    if len(parts) < 3:
-        await message.reply_text(
-            "Usage: /add source|target @channel_username OR channel_id\n"
-            "Example: /add source @TechNews\n"
-            "Example: /add target -1001234567890"
-        )
-        return
-
-    mode, channel = parts[1], parts[2]
-    
-    if mode not in ["source", "target"]:
-        await message.reply_text("Invalid mode. Use 'source' or 'target'.")
-        return
-
-    # Get chat info
-    chat = await get_entity_info(client, channel)
-    if not chat:
-        await message.reply_text(f"❌ Cannot access channel: {channel}")
-        return
-
-    data = load_config()
-    key = f"{mode}_channels"
-    
-    channel_id = str(chat.id)
-    
-    if mode == "target":
-        # Check if we can send messages to target
-        try:
-            await client.send_message(chat.id, "✅ Test message - bot access confirmed")
-            await asyncio.sleep(1)
-        except ChatAdminRequired:
-            await message.reply_text(f"❌ No permission to send messages in {chat.title}")
-            return
-        except Exception as e:
-            await message.reply_text(f"❌ Cannot send to {chat.title}: {str(e)}")
-            return
-    
-    if channel_id not in data[key]:
-        data[key].append(channel_id)
-        save_config(data)
-        await message.reply_text(
-            f"✅ Added {chat.title} to {mode} channels\n"
-            f"ID: {channel_id}\n"
-            f"Type: {chat.type}"
-        )
-        logger.info(f"Added {chat.title} ({channel_id}) to {mode} channels")
-    else:
-        await message.reply_text("❌ Channel already added.")
-
-
-@app.on_message(filters.command("remove") & filters.private)
-async def remove_channel(client, message: Message):
-    """Remove source or target channel"""
-    parts = message.text.split()
-    if len(parts) < 3:
-        await message.reply_text("Usage: /remove source|target @channel_username OR channel_id")
-        return
-
-    mode, channel = parts[1], parts[2]
-    
-    if mode not in ["source", "target"]:
-        await message.reply_text("Invalid mode. Use 'source' or 'target'.")
-        return
-
-    # Get chat info to find the correct ID
-    chat = await get_entity_info(client, channel)
-    if chat:
-        channel_id = str(chat.id)
-    else:
-        channel_id = channel  # Use as-is if we can't resolve
-
-    data = load_config()
-    key = f"{mode}_channels"
-
-    if channel_id in data[key]:
-        data[key].remove(channel_id)
-        save_config(data)
-        await message.reply_text(f"✅ Removed channel from {mode} channels.")
-        logger.info(f"Removed {channel_id} from {mode} channels")
-    else:
-        await message.reply_text("❌ Channel not found.")
-
-
-@app.on_message(filters.command("list") & filters.private)
-async def list_channels(client, message: Message):
-    """List all configured channels"""
-    data = load_config()
-    
-    text = "📋 **Current Configuration:**\n\n"
-    
-    # Source channels
-    text += f"**Source Channels ({len(data['source_channels'])}):**\n"
-    for channel_id in data['source_channels']:
-        chat = await get_entity_info(client, channel_id)
-        if chat:
-            text += f"• {chat.title} (`{channel_id}`)\n"
-        else:
-            text += f"• Unknown (`{channel_id}`) ❌\n"
-    
-    # Target channels
-    text += f"\n**Target Channels ({len(data['target_channels'])}):**\n"
-    for channel_id in data['target_channels']:
-        chat = await get_entity_info(client, channel_id)
-        if chat:
-            text += f"• {chat.title} (`{channel_id}`)\n"
-        else:
-            text += f"• Unknown (`{channel_id}`) ❌\n"
-    
-    # Replacements
-    text += f"\n**Replacement Rules ({len(data['replacements'])}):**\n"
-    for old, new in data['replacements'].items():
-        text += f"• `{old}` → `{new}`\n"
-    
-    if not data['source_channels'] and not data['target_channels']:
-        text += "\n❌ No channels configured yet."
-    
-    await message.reply_text(text)
-
-
-@app.on_message(filters.command("addreplace") & filters.private)
-async def add_replacement(client, message: Message):
-    """Add text replacement rule"""
-    parts = message.text.split(maxsplit=2)
-    if len(parts) < 3:
-        await message.reply_text("Usage: /addreplace old_text new_text")
-        return
-
-    old, new = parts[1], parts[2]
-    
-    data = load_config()
-    data["replacements"][old] = new
-    save_config(data)
-    
-    await message.reply_text(f"✅ Replacement rule added:\n`{old}` → `{new}`")
-    logger.info(f"Added replacement rule: {old} → {new}")
-
-
-@app.on_message(filters.command("removereplace") & filters.private)
-async def remove_replacement(client, message: Message):
-    """Remove text replacement rule"""
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.reply_text("Usage: /removereplace old_text")
-        return
-
-    old = parts[1]
-    data = load_config()
-    
-    if old in data["replacements"]:
-        del data["replacements"][old]
-        save_config(data)
-        await message.reply_text(f"✅ Removed replacement rule: `{old}`")
-        logger.info(f"Removed replacement rule: {old}")
-    else:
-        await message.reply_text("❌ Rule not found.")
-
-
-@app.on_message(filters.command("status") & filters.private)
-async def status(client, message: Message):
-    """Show bot status"""
-    data = load_config()
-    
-    text = "🤖 **Forwarder Status:**\n\n"
-    
-    # Check source channels
-    text += "**Source Channels:**\n"
-    for channel_id in data['source_channels']:
-        try:
-            chat = await client.get_chat(int(channel_id))
-            text += f"✅ {chat.title}\n"
-        except Exception as e:
-            text += f"❌ {channel_id} - Error: {str(e)[:30]}...\n"
-    
-    # Check target channels
-    text += "\n**Target Channels:**\n"
-    for channel_id in data['target_channels']:
-        try:
-            chat = await client.get_chat(int(channel_id))
-            text += f"✅ {chat.title}\n"
-        except Exception as e:
-            text += f"❌ {channel_id} - Error: {str(e)[:30]}...\n"
-    
-    text += f"\n**Statistics:**\n"
-    text += f"• Messages forwarded: {len(data.get('forwarded_messages', []))}\n"
-    text += f"• Active replacements: {len(data['replacements'])}\n"
-    
-    await message.reply_text(text)
-
-
+# ✅ /help command (fixed)
 @app.on_message(filters.command("help"))
 async def help_command(client, message: Message):
-    print("✅ Received /help command from:", message.from_user.id)
-    await message.reply_text("✅ Bot is working! Use /add, /list etc.")
-async def help_command(client, message: Message):
-    """Show help"""
-    help_text = """
-🤖 **Telegram User Auto-Forwarder**
+    print(f"✅ /help command received from: {message.from_user.id}")
+    await message.reply_text("""
+🤖 *Telegram UserBot Forwarder*
 
-**Commands:**
-• `/add source @channel` - Add source channel to monitor
-• `/add target @channel` - Add target channel for forwarding
-• `/remove source @channel` - Remove source channel
-• `/remove target @channel` - Remove target channel
-• `/list` - Show all configured channels
-• `/addreplace old new` - Add text replacement rule
-• `/removereplace old` - Remove replacement rule
-• `/status` - Show forwarder status
-• `/help` - Show this help
+🔧 Commands:
+/add source @channel
+/add target @channel
+/remove source @channel
+/remove target @channel
+/list — Show all added channels
+/addreplace old new — Text replacement
+/removereplace old — Remove replacement
+/status — Forwarder status
 
-**Features:**
-✅ Monitor ANY public channel (no need to join)
-✅ Forward to any channel you have access to
-✅ Text replacement/editing
-✅ Duplicate message prevention
-✅ Support for all message types
+✅ Bot is working!""")
 
-**Example Setup:**
-```
-/add source @TechNews
-/add target @MyChannel
-/addreplace "BREAKING" "🚨 BREAKING"
-```
+# ✅ /add command
+@app.on_message(filters.command("add"))
+async def add_channel(client, message: Message):
+    parts = message.text.split()
+    if len(parts) < 3:
+        await message.reply("Use: /add source|target @channel")
+        return
 
-**Note:** This uses your user account, so it can monitor any public channel without joining!
-"""
-    
-    await message.reply_text(help_text)
+    mode, target = parts[1], parts[2]
+    if mode not in ["source", "target"]:
+        return await message.reply("Use: /add source|target")
 
+    chat = await get_entity_info(client, target)
+    if not chat:
+        return await message.reply("❌ Invalid channel.")
 
-@app.on_message(filters.command("getsession") & filters.private)
-async def get_session_string(client, message: Message):
-    """Get current session string (for backup purposes)"""
-    try:
-        session_string = await client.export_session_string()
-        await message.reply_text(
-            f"🔐 **Your Session String:**\n\n`{session_string}`\n\n"
-            "⚠️ **IMPORTANT:** Keep this session string secure! "
-            "Anyone with this string can access your Telegram account."
-        )
-        logger.info("Session string exported successfully")
-    except Exception as e:
-        await message.reply_text(f"❌ Failed to export session string: {str(e)}")
-        logger.error(f"Failed to export session string: {e}")
+    config = load_config()
+    key = f"{mode}_channels"
+    if str(chat.id) not in config[key]:
+        config[key].append(str(chat.id))
+        save_config(config)
+        await message.reply(f"✅ Added {chat.title} to {mode} list.")
+    else:
+        await message.reply("Already added.")
 
+# ✅ /remove command
+@app.on_message(filters.command("remove"))
+async def remove_channel(client, message: Message):
+    parts = message.text.split()
+    if len(parts) < 3:
+        return await message.reply("Use: /remove source|target @channel")
 
+    mode, target = parts[1], parts[2]
+    config = load_config()
+    key = f"{mode}_channels"
+
+    chat = await get_entity_info(client, target)
+    if chat and str(chat.id) in config[key]:
+        config[key].remove(str(chat.id))
+        save_config(config)
+        await message.reply("✅ Removed.")
+    else:
+        await message.reply("❌ Not found.")
+
+# ✅ /list command
+@app.on_message(filters.command("list"))
+async def list_all(client, message: Message):
+    config = load_config()
+    reply = "**Source Channels:**\n" + "\n".join(config["source_channels"]) or "None"
+    reply += "\n\n**Target Channels:**\n" + "\n".join(config["target_channels"]) or "None"
+    reply += "\n\n**Replacements:**\n" + "\n".join([f"{k} → {v}" for k, v in config["replacements"].items()]) or "None"
+    await message.reply_text(reply)
+
+# ✅ /addreplace command
+@app.on_message(filters.command("addreplace"))
+async def add_replace(client, message: Message):
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        return await message.reply("Usage: /addreplace old new")
+
+    old, new = parts[1], parts[2]
+    config = load_config()
+    config["replacements"][old] = new
+    save_config(config)
+    await message.reply(f"Added replacement: `{old}` → `{new}`")
+
+# ✅ /removereplace command
+@app.on_message(filters.command("removereplace"))
+async def remove_replace(client, message: Message):
+    parts = message.text.split()
+    if len(parts) < 2:
+        return await message.reply("Usage: /removereplace old")
+
+    old = parts[1]
+    config = load_config()
+    if old in config["replacements"]:
+        del config["replacements"][old]
+        save_config(config)
+        await message.reply("Removed.")
+    else:
+        await message.reply("Not found.")
+
+# ✅ /status command
+@app.on_message(filters.command("status"))
+async def status(client, message: Message):
+    config = load_config()
+    text = f"📡 Forwarding Active\n\nSources: {len(config['source_channels'])}\nTargets: {len(config['target_channels'])}\nReplacements: {len(config['replacements'])}\nForwarded Msgs: {len(config['forwarded_messages'])}"
+    await message.reply(text)
+
+# ✅ Message Forwarder
 @app.on_message(filters.channel)
-async def handle_channel_message(client, message: Message):
-    """Handle messages from channels - main forwarding logic"""
-    data = load_config()
-    
-    source_channel_id = str(message.chat.id)
-    
-    # Check if this channel is being monitored
-    if source_channel_id not in data['source_channels']:
+async def forward_handler(client, message: Message):
+    config = load_config()
+    sid = str(message.chat.id)
+    if sid not in config["source_channels"]:
         return
-    
-    # Prevent duplicate forwards
-    message_id = f"{source_channel_id}_{message.id}"
-    forwarded_messages = set(data.get('forwarded_messages', []))
-    
-    if message_id in forwarded_messages:
+
+    mid = f"{sid}_{message.id}"
+    if mid in config["forwarded_messages"]:
         return
-    
-    logger.info(f"New message from monitored channel: {message.chat.title}")
-    
-    # Get message content
+
     text = message.text or message.caption or ""
-    
-    # Apply text replacements
-    for old, new in data["replacements"].items():
+    for old, new in config["replacements"].items():
         text = text.replace(old, new)
-    
-    # Forward to all target channels
-    successful_forwards = 0
-    failed_forwards = 0
-    
-    for target_id in data["target_channels"]:
+
+    for tid in config["target_channels"]:
         try:
-            target_chat_id = int(target_id)
-            
-            # Handle different message types
             if message.text:
-                await client.send_message(target_chat_id, text)
+                await client.send_message(int(tid), text)
             elif message.photo:
-                await client.send_photo(target_chat_id, message.photo.file_id, caption=text)
+                await client.send_photo(int(tid), message.photo.file_id, caption=text)
             elif message.video:
-                await client.send_video(target_chat_id, message.video.file_id, caption=text)
-            elif message.document:
-                await client.send_document(target_chat_id, message.document.file_id, caption=text)
-            elif message.sticker:
-                await client.send_sticker(target_chat_id, message.sticker.file_id)
-            elif message.audio:
-                await client.send_audio(target_chat_id, message.audio.file_id, caption=text)
-            elif message.voice:
-                await client.send_voice(target_chat_id, message.voice.file_id, caption=text)
-            elif message.video_note:
-                await client.send_video_note(target_chat_id, message.video_note.file_id)
-            elif message.animation:
-                await client.send_animation(target_chat_id, message.animation.file_id, caption=text)
-            else:
-                logger.warning(f"Unsupported message type from {source_channel_id}")
-                continue
-            
-            successful_forwards += 1
-            logger.info(f"Successfully forwarded to {target_id}")
-            
-        except FloodWait as e:
-            logger.warning(f"Rate limited, waiting {e.value} seconds")
-            await asyncio.sleep(e.value)
-            failed_forwards += 1
+                await client.send_video(int(tid), message.video.file_id, caption=text)
         except Exception as e:
-            failed_forwards += 1
-            logger.error(f"Failed to forward to {target_id}: {e}")
-    
-    # Mark message as forwarded
-    if successful_forwards > 0:
-        forwarded_messages.add(message_id)
-        data['forwarded_messages'] = list(forwarded_messages)
-        
-        # Keep only last 1000 message IDs to prevent infinite growth
-        if len(data['forwarded_messages']) > 1000:
-            data['forwarded_messages'] = data['forwarded_messages'][-1000:]
-        
-        save_config(data)
-    
-    if successful_forwards > 0 or failed_forwards > 0:
-        logger.info(f"Forward summary: {successful_forwards} successful, {failed_forwards} failed")
+            logger.error(f"Forward failed: {e}")
 
+    config["forwarded_messages"].append(mid)
+    if len(config["forwarded_messages"]) > 1000:
+        config["forwarded_messages"] = config["forwarded_messages"][-1000:]
+    save_config(config)
 
+# 🔁 Run the client
 async def main():
-    """Main function"""
-    print("🚀 Starting Telegram User Auto-Forwarder...")
-    print("📱 This will use your user account to monitor and forward messages")
-    print("⚠️  Make sure you have API_ID, API_HASH, and SESSION_STRING set!")
-    
-    try:
-        await app.start()
-        print("✅ Successfully logged in with session string!")
-        
-        # Get user info
-        me = await app.get_me()
-        print(f"👤 Logged in as: {me.first_name} {me.last_name or ''} (@{me.username or 'no_username'})")
-        print("💬 Send /help to yourself to see available commands")
-        print("🔐 Send /getsession to get your current session string for backup")
-        print("🔄 Auto-forwarding is now active!")
-        
-        # Keep the client running
-        await asyncio.Event().wait()
-        
-    except Exception as e:
-        logger.error(f"Failed to start: {e}")
-        print(f"❌ Error: {e}")
-        print("\n💡 If you're getting authentication errors:")
-        print("1. Make sure your SESSION_STRING is valid and not expired")
-        print("2. If you don't have a session string, run the script once without it to generate one")
-        print("3. Use /getsession command to backup your session string")
-    finally:
-        await app.stop()
-
+    await app.start()
+    print("✅ Bot started. Type /help to begin.")
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
