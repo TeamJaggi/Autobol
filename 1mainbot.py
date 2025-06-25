@@ -8,7 +8,7 @@ from pyrogram.errors import FloodWait, ChatAdminRequired
 # 🔐 Hardcoded credentials
 API_ID = 28093492
 API_HASH = "2d18ff97ebdfc2f1f3a2596c48e3b4e4"
-SESSION_STRING = "BQGsrDQAU_-Qo51cnaQIYNyY..."
+SESSION_STRING = "BQGsrDQAYbbI2LrPFEd9tyl9cqi_hzNvqamdWVllmio4GIEfO-z1uHpJntmTllHNth65tyOPZgnOTY_v1jzc8bPrplfLcqml8L8nqOwwfCWA3hHTO1WUslvOl7T4cI4c11NfVajrkWj-WxKL21BzGXqG-oBCaIqHUfu4TYjnzgC0oClavaS2c0MyxRjC3dj7vKCGnZj6rnHEy5pXA1McJHxJx1x5v-UlZEss8TuE5T1zXuNp5l1WOKFzI6rR_Oo4sSYGIgL85h6Ic7iuYw69fdtBnpGmTqMtnoCDozSOxQklN7oiBeSU8lw7p5kxY1N_KdIiERfpIPh2qLj0YVQBHr0zulhfxAAAAAHV1YXKAA"
 
 CONFIG_FILE = "config.json"
 
